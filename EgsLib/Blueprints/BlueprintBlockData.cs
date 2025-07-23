@@ -38,6 +38,11 @@ namespace EgsLib.Blueprints
         public IReadOnlyList<NbtList> Circuits => _circuits;
         public IReadOnlyList<string> ShortcutNames => _shortcutNames;
 
+        /// <summary>
+        /// I don't really know what to call this but it looks like when this is set all blocks get the same density value.
+        /// </summary>
+        private bool _singleDensityFlag = false;
+
         internal BlueprintBlockData(BinaryReader reader, BlueprintHeader header)
         {
             Size = ReadSize(reader, header);
@@ -57,6 +62,22 @@ namespace EgsLib.Blueprints
             ReadSignals(reader);
             ReadLogicCircuits(reader);
             ReadShortcutNames(reader);
+        }
+
+        public void Serialize(BinaryWriter writer)
+        {
+            if (_version <= 2)
+                writer.WriteIntVector3(Size);
+            SerializeBlockData(writer);
+            SerializeBlockDamage(writer);
+            SerializeDensity(writer);
+            SerializeColorAndTextures(writer);
+            SerializeSymbols(writer);
+            SerializeEntities(writer);
+            SerializeLockCodes(writer);
+            SerializeSignals(writer);
+            SerializeLogicCircuits(writer);
+            SerializeShortcutNames(writer);
         }
 
         public void Dispose()
@@ -94,6 +115,23 @@ namespace EgsLib.Blueprints
             }
         }
 
+        private void SerializeBlockData(BinaryWriter writer)
+        {
+            if (_version < 6)
+            {
+                for (var i = 0; i < BlocksSize; i++)
+                {
+                    writer.Write(_blocks[i].Data);
+                }
+            }
+            else
+            {
+                PackedArray.SerializeData(writer, BlocksSize,
+                    i => _blocks[i].Data != 0,
+                    (i, w) => w.Write(_blocks[i].Data));
+            }
+        }
+
         private void ReadBlockDamage(BinaryReader reader)
         {
             if (_version <= 11)
@@ -102,9 +140,20 @@ namespace EgsLib.Blueprints
             PackedArray.ReadData(reader, BlocksSize, (i, br) => _blocks[i].Damage = br.ReadUInt16());
         }
 
+        private void SerializeBlockDamage(BinaryWriter writer)
+        {
+            if (_version <= 11)
+                return;
+
+            PackedArray.SerializeData(writer, BlocksSize,
+                i => _blocks[i].Data != 0 && _blocks[i].Damage != 0,
+                (i, w) => w.Write(_blocks[i].Damage));
+        }
+
         private void ReadDensity(BinaryReader reader)
         {
-            if (reader.ReadBoolean())
+            _singleDensityFlag = reader.ReadBoolean();
+            if (_singleDensityFlag)
             {
                 var value = reader.ReadByte();
                 for (var i = 0; i < BlocksSize; i++)
@@ -118,11 +167,23 @@ namespace EgsLib.Blueprints
                 if (bytes.Length != BlocksSize)
                     throw new FormatException("Density array is not the correct length");
 
-                for(var i = 0; i < BlocksSize; i++)
+                for (var i = 0; i < BlocksSize; i++)
                 {
                     _blocks[i].Density = bytes[i];
                 }
             }
+        }
+
+        private void SerializeDensity(BinaryWriter writer)
+        {
+            writer.Write(_singleDensityFlag);
+            if (_singleDensityFlag)
+                writer.Write(_blocks.Length > 0 ? _blocks[0].Density : (byte)0);
+            else
+                for (var i = 0; i < BlocksSize; i++) // Use BlocksSize instead of _blocks.Length!
+                {
+                    writer.Write(_blocks[i].Density);
+                }
         }
 
         private void ReadColorAndTextures(BinaryReader reader)
@@ -139,14 +200,49 @@ namespace EgsLib.Blueprints
             PackedArray.ReadData(reader, BlocksSize, (i, br) => _blocks[i].TextureRotation = br.ReadByte());
         }
 
+        private void SerializeColorAndTextures(BinaryWriter writer)
+        {
+            if (_version < 6)
+                return;
+
+            PackedArray.SerializeData(writer, BlocksSize,
+                i => _blocks[i].Data != 0 && _blocks[i].Color != 0,
+                (i, w) => w.Write(_blocks[i].Color));
+
+            PackedArray.SerializeData(writer, BlocksSize,
+                i => _blocks[i].Data != 0 && _blocks[i].Texture != 0,
+                (i, w) => w.Write(_blocks[i].Texture));
+
+            if (_version < 20)
+                return;
+
+            PackedArray.SerializeData(writer, BlocksSize,
+                i => _blocks[i].Data != 0 && _blocks[i].TextureRotation != 0,
+                (i, w) => w.Write(_blocks[i].TextureRotation));
+        }
+
         private void ReadSymbols(BinaryReader reader)
         {
             if (_version < 7)
                 return;
 
             PackedArray.ReadData(reader, BlocksSize, (i, br) => _blocks[i].Symbol = br.ReadInt32());
-            PackedArray.ReadData(reader, BlocksSize, 
+            PackedArray.ReadData(reader, BlocksSize,
                 (i, br) => _blocks[i].SymbolRotation = _version >= 8 ? br.ReadInt32() : br.ReadInt16());
+        }
+
+        private void SerializeSymbols(BinaryWriter writer)
+        {
+            if (_version < 7)
+                return;
+
+            PackedArray.SerializeData(writer, BlocksSize,
+                i => _blocks[i].Data != 0 && _blocks[i].Symbol != 0,
+                (i, w) => w.Write(_blocks[i].Symbol));
+
+            PackedArray.SerializeData(writer, BlocksSize,
+                i => _blocks[i].Data != 0 && _blocks[i].SymbolRotation != 0,
+                (i, w) => w.Write(_version >= 8 ? (int)_blocks[i].SymbolRotation : (short)_blocks[i].SymbolRotation));
         }
 
         private void ReadEntities(BinaryReader reader)
@@ -159,12 +255,25 @@ namespace EgsLib.Blueprints
             _entities.EnsureCapacity(count);
 #endif
 
-            for(var i = 0; i < count; i++)
+            for (var i = 0; i < count; i++)
             {
                 var location = reader.ReadIntVector3Packed();
                 var tags = new NbtList(reader);
 
                 _entities.Add(location, tags);
+            }
+        }
+
+        private void SerializeEntities(BinaryWriter writer)
+        {
+            if (_version <= 10)
+                return;
+
+            writer.Write((ushort)_entities.Count);
+            foreach (var entity in _entities.OrderBy(x => x.Key.X).ThenBy(x => x.Key.Y).ThenBy(x => x.Key.Z))
+            {
+                writer.WriteIntVector3Packed(entity.Key);
+                entity.Value.Serialize(writer);
             }
         }
 
@@ -187,6 +296,22 @@ namespace EgsLib.Blueprints
             }
         }
 
+        private void SerializeLockCodes(BinaryWriter writer)
+        {
+            if (_version <= 11)
+                return;
+
+            writer.Write((ushort)_lockCodes.Count);
+            foreach (var lockCode in _lockCodes.OrderBy(x => x.Key.X).ThenBy(x => x.Key.Y).ThenBy(x => x.Key.Z))
+            {
+                writer.WriteIntVector3Packed(lockCode.Key);
+                if (_version > 24)
+                    writer.Write(lockCode.Value);
+                else
+                    writer.Write((short)lockCode.Value);
+            }
+        }
+
         private void ReadSignals(BinaryReader reader)
         {
             if (_version < 14)
@@ -200,7 +325,7 @@ namespace EgsLib.Blueprints
 
             for (var i = 0; i < signalcount; i++)
             {
-                if(_version >= 17)
+                if (_version >= 17)
                 {
                     var nbt = new NbtList(reader);
                     _signalSources.Add(nbt);
@@ -224,12 +349,35 @@ namespace EgsLib.Blueprints
                 var count = reader.ReadUInt16();
                 var list = new NbtList[count];
 
-                for(var j = 0; j < count; j++)
+                for (var j = 0; j < count; j++)
                 {
                     list[j] = new NbtList(reader);
                 }
 
                 _signalReceivers.Add(name, list);
+            }
+        }
+
+        private void SerializeSignals(BinaryWriter writer)
+        {
+            if (_version < 14)
+                return;
+
+            writer.Write((ushort)_signalSources.Count);
+            foreach (var signal in _signalSources)
+            {
+                signal.Serialize(writer);
+            }
+
+            writer.Write((ushort)_signalReceivers.Count);
+            foreach (var receiver in _signalReceivers.OrderBy(x => x.Key))
+            {
+                writer.Write(receiver.Key);
+                writer.Write((ushort)receiver.Value.Count);
+                foreach (var nbt in receiver.Value)
+                {
+                    nbt.Serialize(writer);
+                }
             }
         }
 
@@ -248,6 +396,18 @@ namespace EgsLib.Blueprints
             {
                 var nbt = new NbtList(reader);
                 _circuits.Add(nbt);
+            }
+        }
+
+        private void SerializeLogicCircuits(BinaryWriter writer)
+        {
+            if (_version < 15)
+                return;
+
+            writer.Write((ushort)_circuits.Count);
+            foreach (var circuit in _circuits)
+            {
+                circuit.Serialize(writer);
             }
         }
 
@@ -279,6 +439,18 @@ namespace EgsLib.Blueprints
             }
         }
 
+        private void SerializeShortcutNames(BinaryWriter writer)
+        {
+            if (_version <= 15)
+                return;
+
+            writer.Write((ushort)_shortcutNames.Count);
+            foreach (var name in _shortcutNames)
+            {
+                writer.Write(name);
+            }
+        }
+
         private class PackedArray
         {
             private readonly byte[] _data;
@@ -287,7 +459,7 @@ namespace EgsLib.Blueprints
             private int _bitOffset = 8;
 
             private byte _entry;
-            
+
             public bool ReadFlag
             {
                 get
@@ -309,6 +481,25 @@ namespace EgsLib.Blueprints
                 _data = reader.ReadBytes(length);
             }
 
+            public PackedArray(List<int> data, int totalCount)
+            {
+                int byteCount = (totalCount + 7) / 8;
+                _data = new byte[byteCount];
+
+                foreach (int index in data)
+                {
+                    int byteIndex = index / 8;
+                    int bitIndex = index % 8;
+                    _data[byteIndex] |= (byte)(1 << bitIndex);
+                }
+            }
+
+            public void Serialize(BinaryWriter writer)
+            {
+                writer.Write(_data.Length);
+                writer.Write(_data);
+            }
+
             public static void ReadData(BinaryReader reader, int count, Action<int, BinaryReader> handler)
             {
                 var flags = new PackedArray(reader);
@@ -318,6 +509,24 @@ namespace EgsLib.Blueprints
                         continue;
 
                     handler(i, reader);
+                }
+            }
+
+            public static void SerializeData(BinaryWriter writer, int count, Func<int, bool> hasData, Action<int, BinaryWriter> writeData)
+            {
+                var blocksWithData = new List<int>();
+                for (int i = 0; i < count; i++)
+                {
+                    if (hasData(i))
+                        blocksWithData.Add(i);
+                }
+
+                var packedArray = new PackedArray(blocksWithData, count);
+                packedArray.Serialize(writer);
+
+                foreach (int blockIndex in blocksWithData)
+                {
+                    writeData(blockIndex, writer);
                 }
             }
         }

@@ -17,6 +17,8 @@ namespace EgsLib.Blueprints
 
     public class BlueprintHeader
     {
+        private const int MAGIC_NUMBER = 2022986309;
+
         private readonly string _fileName;
 
         #region From BP File
@@ -33,6 +35,8 @@ namespace EgsLib.Blueprints
         public IReadOnlyDictionary<string, int> BlockMap { get; private set; }
 
         public IReadOnlyDictionary<string, DeviceGroup> DeviceGroups { get; private set; }
+
+        public int DeviceGroupVersion { get; private set; }
         #endregion
 
         /// <summary>
@@ -64,28 +68,28 @@ namespace EgsLib.Blueprints
                 if (Statistics == null)
                     return -1;
 
-                var devices   = Statistics.BlockDevices;
-                var lights    = Statistics.Lights;
+                var devices = Statistics.BlockDevices;
+                var lights = Statistics.Lights;
                 var triangles = Statistics.TrianglesReal;
 
-                if(triangles == 0)
+                if (triangles == 0)
                     triangles = Statistics.Triangles;
 
                 if (devices == -1 || lights == -1 || triangles == 1)
                     return -1;
 
-                if(triangles == 0)
+                if (triangles == 0)
                 {
-                    if (devices <= 50)        return 1f;
-                    else if (devices <= 250)  return 2f;
-                    else if (devices <= 500)  return 3f;
+                    if (devices <= 50) return 1f;
+                    else if (devices <= 250) return 2f;
+                    else if (devices <= 500) return 3f;
                     else if (devices <= 1000) return 4f;
                     else if (devices <= 1500) return 5f;
                     else if (devices <= 2000) return 6f;
                     else if (devices <= 2500) return 7f;
                     else if (devices <= 3000) return 8f;
                     else if (devices <= 3500) return 9f;
-                    else                      return 10 + (devices - 3500) / 500;
+                    else return 10 + (devices - 3500) / 500;
                 }
 
                 return ((devices * 0.1f) + (lights * 0.05f) + (triangles * 0.00027f)) / 3f;
@@ -168,6 +172,33 @@ namespace EgsLib.Blueprints
             return false;
         }
 
+        public void Serialize(BinaryWriter writer)
+        {
+            writer.Write(MAGIC_NUMBER);
+            writer.Write(Version);
+            if (Version > 1)
+                writer.Write((byte)BlueprintType);
+            if (Version > 2)
+            {
+                writer.WriteIntVector3(Size ?? new Vector3<int>());
+                SerializeProperties(writer);
+            }
+            if (Version > 3)
+                Statistics.Serialize(writer);
+            if (Version > 27)
+            {
+                if (BlockMap != null && BlockMap.Count > 0)
+                {
+                    writer.Write(true);
+                    SerializeBlockMap(writer);
+                }
+                else
+                    writer.Write(false);
+            }
+            if (Version > 10)
+                SerializeDeviceGroups(writer);
+        }
+
         private void Read(BinaryReader reader)
         {
             if (reader.ReadInt32() != 2022986309)
@@ -195,13 +226,14 @@ namespace EgsLib.Blueprints
             {
                 var readable = reader.ReadBoolean();
 
-                if(readable)
+                if (readable)
                     BlockMap = ReadBlockMap(reader);
             }
 
             if (Version > 10)
             {
-                DeviceGroups = ReadDeviceGroups(reader);
+                DeviceGroupVersion = reader.ReadByte();
+                DeviceGroups = ReadDeviceGroups(reader, DeviceGroupVersion);
             }
         }
 
@@ -217,42 +249,43 @@ namespace EgsLib.Blueprints
                 var name = (PropertyName)reader.ReadInt32();
                 var type = (PropertyType)(reader.ReadInt32() >> 24); // 3 filler bytes + type byte
                 object value = null;
+                string metadata = null;
 
-                switch(type)
+                switch (type)
                 {
                     case PropertyType.String:
                         value = reader.ReadString(); break;
 
                     case PropertyType.Bool:
                         value = reader.ReadBoolean();
-                        reader.ReadString();
+                        metadata = reader.ReadString();
                         break;
 
                     case PropertyType.Int:
                         value = reader.ReadInt32();
-                        reader.ReadString();
+                        metadata = reader.ReadString();
                         break;
 
                     case PropertyType.Single:
                         value = reader.ReadSingle();
-                        reader.ReadString();
+                        metadata = reader.ReadString();
                         break;
 
                     case PropertyType.Vector3:
                         value = reader.ReadSingleVector3();
-                        reader.ReadString(); 
+                        metadata = reader.ReadString();
                         break;
 
                     case PropertyType.Long:
                         value = reader.ReadInt64();
-                        reader.ReadString(); 
+                        metadata = reader.ReadString();
                         break;
                 }
 
                 if (value == null)
                     throw new FormatException("Property has no value, unknown type?");
 
-                list.Add(new PropertyDetails(name, type, value));
+                list.Add(new PropertyDetails(name, type, value, metadata));
             }
 
             reader.ReadInt16(); // Garbage/unknown
@@ -277,22 +310,51 @@ namespace EgsLib.Blueprints
 
             return dict;
         }
-        
-        private static Dictionary<string, DeviceGroup> ReadDeviceGroups(BinaryReader reader)
+
+        private static Dictionary<string, DeviceGroup> ReadDeviceGroups(BinaryReader reader, int deviceGroupVersion)
         {
             var dict = new Dictionary<string, DeviceGroup>();
 
-            var deviceGroupVersion = reader.ReadByte();
             var count = reader.ReadInt16();
-
             for (var i = 0; i < count; i++)
             {
                 var group = new DeviceGroup(reader, deviceGroupVersion);
-                
+
                 dict[group.Name] = group;
             }
 
             return dict;
+        }
+        private void SerializeBlockMap(BinaryWriter writer)
+        {
+            writer.Write((byte)0);
+            writer.Write(BlockMap.Count);
+            foreach (var kvp in BlockMap)
+            {
+                writer.Write(kvp.Key);
+                writer.Write((Int16)kvp.Value);
+            }
+        }
+
+        private void SerializeDeviceGroups(BinaryWriter writer)
+        {
+            writer.Write((byte)DeviceGroupVersion);
+            writer.Write((Int16)DeviceGroups.Count);
+            foreach (var kvp in DeviceGroups)
+            {
+                kvp.Value.Serialize(writer, DeviceGroupVersion);
+            }
+        }
+
+        private void SerializeProperties(BinaryWriter writer)
+        {
+            writer.Write((Int16)0);
+            writer.Write((Int16)Properties.Count);
+            foreach (var p in Properties)
+            {
+                p.Serialize(writer);
+            }
+            writer.Write((Int16)0);
         }
     }
 }

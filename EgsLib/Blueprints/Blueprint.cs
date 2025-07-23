@@ -2,7 +2,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Text;
 
 namespace EgsLib.Blueprints
 {
@@ -53,6 +52,12 @@ namespace EgsLib.Blueprints
             }
         }
 
+        public void Serialize(BinaryWriter bw)
+        {
+            Header.Serialize(bw);
+            SerializeBlockData(bw);
+        }
+
         private static byte[] ReadFileBytes(FileInfo file, out DateTime lastWriteTime)
         {
             byte[] bytes;
@@ -87,7 +92,7 @@ namespace EgsLib.Blueprints
         {
             // Older versions read until the end of file while newer ones support terrain data after block data
             int length;
-            if(Header.Version > 22)
+            if (Header.Version > 22)
             {
                 length = reader.ReadInt32();
                 reader.ReadBytes(2); // Unknown/garbage
@@ -123,7 +128,7 @@ namespace EgsLib.Blueprints
 
                     return new BlueprintBlockData(zipReader, Header);
                 }
-                catch(ZipException)
+                catch (ZipException)
                 {
                     // Thrown on malformed zip entry which seems to be an issue with some files
                     // Notably: CV_New, HV_New, SV_New
@@ -137,9 +142,71 @@ namespace EgsLib.Blueprints
             }
         }
 
+        private void SerializeBlockData(BinaryWriter writer)
+        {
+            // Serialize block data to byte[]
+            byte[] blockDataBytes;
+            using (var blockDataStream = new MemoryStream())
+            using (var blockDataWriter = new BinaryWriter(blockDataStream))
+            {
+                BlockData.Serialize(blockDataWriter);
+                blockDataWriter.Flush();
+                blockDataBytes = blockDataStream.ToArray();
+            }
+
+            // Create a ZIP archive in memory with one entry "0"
+            byte[] compressedBytes;
+            using (var compressedStream = new MemoryStream())
+            {
+                using (var zipFile = ZipFile.Create(compressedStream))
+                {
+                    zipFile.BeginUpdate();
+                    zipFile.Add(new ByteArrayDataSource(blockDataBytes), "0");
+                    zipFile.CommitUpdate();
+                }
+                compressedBytes = compressedStream.ToArray();
+            }
+
+            if (Header.Version > 22)
+            {
+                // Write length + 2 "garbage" bytes
+                var length = compressedBytes.Length;
+                if (length <= 0)
+                {
+                    throw new InvalidOperationException($"Invalid compressed bytes length: {length}");
+                }
+                writer.Write(length);
+                writer.Write(new byte[2]);
+                writer.Write(compressedBytes); // Full ZIP archive
+            }
+            else
+            {
+                // Remove the first 2 bytes ("PK") for legacy versions
+                var dataWithoutPK = new byte[compressedBytes.Length - 2];
+                Array.Copy(compressedBytes, 2, dataWithoutPK, 0, dataWithoutPK.Length);
+                writer.Write(dataWithoutPK);
+            }
+        }
+
+
         private void ReadTerrainData(BinaryReader reader)
         {
 
+        }
+    }
+
+    public class ByteArrayDataSource : IStaticDataSource
+    {
+        private readonly byte[] _data;
+
+        public ByteArrayDataSource(byte[] data)
+        {
+            _data = data;
+        }
+
+        public Stream GetSource()
+        {
+            return new MemoryStream(_data, writable: false);
         }
     }
 }
