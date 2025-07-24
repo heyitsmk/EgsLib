@@ -98,6 +98,44 @@ namespace EgsLib.Blueprints
             }
         }
 
+        /// <summary>
+        /// Private constructor for creating updated statistics instances
+        /// </summary>
+        private Statistics(Statistics original, int? blockDevices = null, int? blockModels = null, 
+            int? blockSolids = null, int? triangles = null, Dictionary<int, int> blockDistributions = null)
+        {
+            Version = original.Version;
+            Magic = original.Magic;
+            ExtraMagic = original.ExtraMagic;
+
+            Lights = original.Lights;
+            Doors = original.Doors;
+            BlockDevices = blockDevices ?? original.BlockDevices;
+            BlockModels = blockModels ?? original.BlockModels;
+            BlockSolids = blockSolids ?? original.BlockSolids;
+            Triangles = triangles ?? original.Triangles;
+            TrianglesReal = triangles ?? original.TrianglesReal;
+            Teleporters = original.Teleporters;
+            SpawnPointsUnlocked = original.SpawnPointsUnlocked;
+            SpawnPointsLocked = original.SpawnPointsLocked;
+            BlockDistributions = blockDistributions ?? original.BlockDistributions;
+            ArtilleryAttack = original.ArtilleryAttack;
+            ArtilleryDefense = original.ArtilleryDefense;
+            InfantryAttack = original.InfantryAttack;
+            InfantryDefense = original.InfantryDefense;
+            AdminCore = original.AdminCore;
+            KeepContainers = original.KeepContainers;
+        }
+
+        /// <summary>
+        /// Creates a new Statistics instance with updated values
+        /// </summary>
+        public Statistics CreateUpdated(int blockDevices, int blockModels, int blockSolids, 
+            int triangles, Dictionary<int, int> blockDistributions)
+        {
+            return new Statistics(this, blockDevices, blockModels, blockSolids, triangles, blockDistributions);
+        }
+
         public void Serialize(BinaryWriter writer)
         {
             writer.Write(Lights);

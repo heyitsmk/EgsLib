@@ -14,13 +14,13 @@ namespace EgsLib.Blueprints
 
         private readonly int _version;
 
-        private readonly Block[] _blocks;
-        private readonly Dictionary<Vector3<int>, NbtList> _entities = new Dictionary<Vector3<int>, NbtList>();
-        private readonly Dictionary<Vector3<int>, int> _lockCodes = new Dictionary<Vector3<int>, int>();
-        private readonly List<NbtList> _signalSources = new List<NbtList>();
-        private readonly Dictionary<string, IReadOnlyList<NbtList>> _signalReceivers = new Dictionary<string, IReadOnlyList<NbtList>>();
-        private readonly List<NbtList> _circuits = new List<NbtList>();
-        private readonly List<string> _shortcutNames = new List<string>();
+        private Block[] _blocks;
+        private Dictionary<Vector3<int>, NbtList> _entities = new Dictionary<Vector3<int>, NbtList>();
+        private Dictionary<Vector3<int>, int> _lockCodes = new Dictionary<Vector3<int>, int>();
+        private List<NbtList> _signalSources = new List<NbtList>();
+        private Dictionary<string, IReadOnlyList<NbtList>> _signalReceivers = new Dictionary<string, IReadOnlyList<NbtList>>();
+        private List<NbtList> _circuits = new List<NbtList>();
+        private List<string> _shortcutNames = new List<string>();
 
         /// <summary>
         /// Raw bytes for all remaining data after shortcut names (blueprint parts, snap points, color palette, etc.)
@@ -28,7 +28,7 @@ namespace EgsLib.Blueprints
         /// </summary>
         private byte[] _remainingDataBytes = new byte[0];
 
-        public Vector3<int> Size { get; }
+        public Vector3<int> Size { get; set; }
 
         /// <summary>
         /// Note: Use BlocksSize instead of Blocks.Count.
@@ -89,6 +89,270 @@ namespace EgsLib.Blueprints
             }
             
             _remainingDataBytes = remainingBytes.ToArray();
+        }
+
+        /// <summary>
+        /// Gets a block at the specified 3D coordinate
+        /// </summary>
+        public Block GetBlock(Vector3<int> position)
+        {
+            if (!IsValidPosition(position))
+                return new Block();
+
+            int index = CoordinateToIndex(position);
+            return _blocks[index];
+        }
+
+        /// <summary>
+        /// Sets a block at the specified 3D coordinate
+        /// </summary>
+        public void SetBlock(Vector3<int> position, Block block)
+        {
+            if (!IsValidPosition(position))
+                throw new ArgumentOutOfRangeException(nameof(position), 
+                    $"Position {position} is outside blueprint bounds {Size}");
+
+            int index = CoordinateToIndex(position);
+            _blocks[index] = block;
+        }
+
+        /// <summary>
+        /// Adds a block with the specified ID at the given position
+        /// </summary>
+        public void AddBlock(Vector3<int> position, int blockId, int rotation = 0, byte variant = 0, byte density = 255)
+        {
+            // Expand blueprint boundaries if the position is outside current bounds
+            ExpandBlueprintIfNeeded(position);
+            
+            var block = Block.Create(blockId, rotation, variant, density);
+            SetBlock(position, block);
+        }
+
+        /// <summary>
+        /// Expands the blueprint size if the given position is outside current bounds
+        /// </summary>
+        private void ExpandBlueprintIfNeeded(Vector3<int> position)
+        {
+            // Check if position is already within bounds
+            if (IsValidPosition(position))
+                return;
+
+            // Calculate new bounds that include the position
+            var newMin = new Vector3<int>(
+                Math.Min(0, position.X),
+                Math.Min(0, position.Y), 
+                Math.Min(0, position.Z)
+            );
+            
+            var newMax = new Vector3<int>(
+                Math.Max(Size.X - 1, position.X),
+                Math.Max(Size.Y - 1, position.Y),
+                Math.Max(Size.Z - 1, position.Z)
+            );
+
+            var newSize = new Vector3<int>(
+                newMax.X - newMin.X + 1,
+                newMax.Y - newMin.Y + 1,
+                newMax.Z - newMin.Z + 1
+            );
+
+            // No expansion needed if size hasn't changed
+            if (newSize.X == Size.X && newSize.Y == Size.Y && newSize.Z == Size.Z)
+                return;
+
+            // Calculate offset needed for existing blocks
+            var offset = new Vector3<int>(-newMin.X, -newMin.Y, -newMin.Z);
+
+            // CRITICAL FIX: Preserve the original size for coordinate calculations
+            var originalSize = Size;
+            var originalBlocksSize = originalSize.X * originalSize.Y * originalSize.Z;
+
+            // Create new larger block array
+            var newBlocksSize = newSize.X * newSize.Y * newSize.Z;
+            var newBlocks = BlockPool.Rent(newBlocksSize);
+            Array.Clear(newBlocks, 0, newBlocksSize);
+
+            for (int i = 0; i < originalBlocksSize; i++)
+            {
+                if (!_blocks[i].IsEmpty)
+                {
+                    // Convert from 1D index to 3D position using original size
+                    var oldPos = IndexToCoordinate(i, originalSize);
+                    
+                    // Apply offset if expanding into negative space
+                    var newPos = new Vector3<int>(
+                        oldPos.X + offset.X,
+                        oldPos.Y + offset.Y, 
+                        oldPos.Z + offset.Z
+                    );
+                    
+                    // Convert back to 1D index using new size
+                    var newIndex = CoordinateToIndex(newPos, newSize);
+                    newBlocks[newIndex] = _blocks[i];
+                }
+            }
+
+            
+            if (offset.X != 0 || offset.Y != 0 || offset.Z != 0)
+            {
+                UpdateCollectionPositions(offset);
+            }
+
+            // Replace old block array with new one
+            BlockPool.Return(_blocks, clearArray: true);
+            _blocks = newBlocks;
+            Size = newSize;
+        }
+
+        /// <summary>
+        /// Updates positions in entities and lock codes collections when blueprint is expanded
+        /// </summary>
+        private void UpdateCollectionPositions(Vector3<int> offset)
+        {
+            // Update entities
+            if (_entities.Count > 0)
+            {
+                var updatedEntities = new Dictionary<Vector3<int>, NbtList>();
+                foreach (var entity in _entities)
+                {
+                    var newPos = new Vector3<int>(
+                        entity.Key.X + offset.X,
+                        entity.Key.Y + offset.Y,
+                        entity.Key.Z + offset.Z
+                    );
+                    updatedEntities[newPos] = entity.Value;
+                }
+                _entities = updatedEntities;
+            }
+
+            // Update lock codes
+            if (_lockCodes.Count > 0)
+            {
+                var updatedLockCodes = new Dictionary<Vector3<int>, int>();
+                foreach (var lockCode in _lockCodes)
+                {
+                    var newPos = new Vector3<int>(
+                        lockCode.Key.X + offset.X,
+                        lockCode.Key.Y + offset.Y,
+                        lockCode.Key.Z + offset.Z
+                    );
+                    updatedLockCodes[newPos] = lockCode.Value;
+                }
+                _lockCodes = updatedLockCodes;
+            }
+        }
+
+        /// <summary>
+        /// Removes a block at the specified position (makes it empty)
+        /// </summary>
+        public void RemoveBlock(Vector3<int> position)
+        {
+            if (!IsValidPosition(position))
+                return;
+
+            int index = CoordinateToIndex(position);
+            _blocks[index].Clear();
+        }
+
+        /// <summary>
+        /// Updates block properties at the specified position
+        /// </summary>
+        public void UpdateBlock(Vector3<int> position, int? color = null, long? texture = null, 
+            byte? textureRotation = null, ushort? damage = null, byte? density = null,
+            int? symbol = null, int? symbolRotation = null)
+        {
+            if (!IsValidPosition(position))
+                return;
+
+            int index = CoordinateToIndex(position);
+            
+            if (color.HasValue) _blocks[index].Color = color.Value;
+            if (texture.HasValue) _blocks[index].Texture = texture.Value;
+            if (textureRotation.HasValue) _blocks[index].TextureRotation = textureRotation.Value;
+            if (damage.HasValue) _blocks[index].Damage = damage.Value;
+            if (density.HasValue) _blocks[index].Density = density.Value;
+            if (symbol.HasValue) _blocks[index].Symbol = symbol.Value;
+            if (symbolRotation.HasValue) _blocks[index].SymbolRotation = symbolRotation.Value;
+        }
+
+        /// <summary>
+        /// Adds an entity at the specified position
+        /// </summary>
+        public void AddEntity(Vector3<int> position, NbtList entityData)
+        {
+            _entities[position] = entityData;
+        }
+
+        /// <summary>
+        /// Removes an entity at the specified position
+        /// </summary>
+        public void RemoveEntity(Vector3<int> position)
+        {
+            _entities.Remove(position);
+        }
+
+        /// <summary>
+        /// Adds a lock code at the specified position
+        /// </summary>
+        public void AddLockCode(Vector3<int> position, int lockCode)
+        {
+            _lockCodes[position] = lockCode;
+        }
+
+        /// <summary>
+        /// Removes a lock code at the specified position
+        /// </summary>
+        public void RemoveLockCode(Vector3<int> position)
+        {
+            _lockCodes.Remove(position);
+        }
+
+        /// <summary>
+        /// Converts 3D coordinate to 1D array index
+        /// </summary>
+        private int CoordinateToIndex(Vector3<int> position)
+        {
+            return position.X + position.Y * Size.X + position.Z * Size.X * Size.Y;
+        }
+
+        /// <summary>
+        /// Converts 1D array index to 3D coordinate
+        /// </summary>
+        private Vector3<int> IndexToCoordinate(int index)
+        {
+            int x = index % Size.X;
+            int y = (index / Size.X) % Size.Y;
+            int z = index / (Size.X * Size.Y);
+            return new Vector3<int>(x, y, z);
+        }
+
+        /// <summary>
+        /// Converts 1D array index to 3D coordinate using specified size
+        /// </summary>
+        private Vector3<int> IndexToCoordinate(int index, Vector3<int> size)
+        {
+            int x = index % size.X;
+            int y = (index / size.X) % size.Y;
+            int z = index / (size.X * size.Y);
+            return new Vector3<int>(x, y, z);
+        }
+
+        /// <summary>
+        /// Converts 3D coordinate to 1D array index using specified size
+        /// </summary>
+        private int CoordinateToIndex(Vector3<int> position, Vector3<int> size)
+        {
+            return position.X + position.Y * size.X + position.Z * size.X * size.Y;
+        }
+
+        /// <summary>
+        /// Checks if the position is within blueprint bounds
+        /// </summary>
+        private bool IsValidPosition(Vector3<int> position)
+        {
+            return position.X >= 0 && position.X < Size.X &&
+                   position.Y >= 0 && position.Y < Size.Y &&
+                   position.Z >= 0 && position.Z < Size.Z;
         }
 
         public void Serialize(BinaryWriter writer)

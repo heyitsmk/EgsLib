@@ -17,14 +17,14 @@ namespace EgsLib.Blueprints
         public DateTime FileLastWritten { get; }
         #endregion
 
-        public BlueprintHeader Header { get; }
+        public BlueprintHeader Header { get; set; }
 
-        public BlueprintBlockData BlockData { get; }
+        public BlueprintBlockData BlockData { get; set; }
 
         /// <summary>
         /// Additional data that appears after the block data (possibly checksum or terrain data)
         /// </summary>
-        public byte[] TrailingData { get; private set; } = new byte[0];
+        public byte[] TrailingData { get; set; } = new byte[0];
 
         /// <summary>
         /// Byte and boolean that appear after the ZIP length (as read by the game)
@@ -60,6 +60,106 @@ namespace EgsLib.Blueprints
                 ReadTerrainData(reader);
             }
         }
+
+        #region Helper Methods
+        /// <summary>
+        /// Adds a block with the specified ID at the given position
+        /// </summary>
+        public void AddBlock(Vector3<int> position, int blockId, int rotation = 0, int color = 0)
+        {
+            // Add the block to block data (this may expand the blueprint size)
+            BlockData.AddBlock(position, blockId, rotation, density: 255);
+
+            // Update header size if block data was expanded
+            Header.Size = BlockData.Size;
+
+            // Set color if specified
+            if (color != 0)
+            {
+                BlockData.UpdateBlock(position, color: color);
+            }
+
+            // Update block map if needed
+            UpdateBlockMapForBlock(blockId);
+
+            // Update statistics
+            Header.UpdateStatistics(BlockData);
+        }
+
+        /// <summary>
+        /// Removes a block at the specified position
+        /// </summary>
+        public void RemoveBlock(Vector3<int> position)
+        {
+            BlockData.RemoveBlock(position);
+            Header.UpdateStatistics(BlockData);
+        }
+
+        /// <summary>
+        /// Sets the blueprint's display name
+        /// </summary>
+        public void SetDisplayName(string displayName)
+        {
+            Header.SetDisplayName(displayName);
+        }
+
+        /// <summary>
+        /// Sets the creator player name
+        /// </summary>
+        public void SetCreatorName(string creatorName)
+        {
+            Header.SetCreatorName(creatorName);
+        }
+
+        /// <summary>
+        /// Sets the creator player ID (often used for Steam ID)
+        /// </summary>
+        public void SetCreatorPlayerId(long playerId)
+        {
+            Header.SetCreatorPlayerId(playerId);
+        }
+
+        /// <summary>
+        /// Gets a block at the specified position
+        /// </summary>
+        public Block GetBlock(Vector3<int> position)
+        {
+            return BlockData.GetBlock(position);
+        }
+
+        /// <summary>
+        /// Updates properties of a block at the specified position
+        /// </summary>
+        public void UpdateBlock(Vector3<int> position, int? color = null, long? texture = null,
+            byte? textureRotation = null, ushort? damage = null, byte? density = null,
+            int? symbol = null, int? symbolRotation = null)
+        {
+            BlockData.UpdateBlock(position, color, texture, textureRotation, damage, density, symbol, symbolRotation);
+        }
+
+        /// <summary>
+        /// Saves the blueprint to the specified file path
+        /// </summary>
+        public void SaveTo(string filePath)
+        {
+            using (var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write))
+            using (var writer = new BinaryWriter(fs))
+            {
+                Serialize(writer);
+            }
+        }
+
+        #endregion
+
+        #region Private Helper Methods
+
+        private void UpdateBlockMapForBlock(int blockId)
+        {
+            string blockName = $"Block_{blockId}";
+            Header.AddToBlockMap(blockName, blockId);
+        }
+
+        #endregion
 
         public void Serialize(BinaryWriter bw)
         {

@@ -1,10 +1,11 @@
 ﻿using EgsLib.Blueprints;
-using System.IO;
 
 namespace EgsLib.Tests.Blueprints
 {
     public class BlueprintSerializationTest
     {
+        // Standardized path to the Simple Cube blueprint (same as MutableBlueprintTest)
+        private const string SIMPLE_CUBE_PATH = @"Resources\Blueprints\Simple Cube\Simple Cube.epb";
         [Theory]
         [ClassData(typeof(BlueprintTestData))]
         public void BlueprintRoundTripSerialization_ShouldProduceIdenticalFile(BlueprintDetails details)
@@ -106,8 +107,7 @@ namespace EgsLib.Tests.Blueprints
         public void SimpleCubeBlueprint_ShouldSerializeAndDeserializeCorrectly()
         {
             // Arrange
-            var simpleCubePath = @"..\..\..\..\Resources\Blueprints\Simple Cube\Simple Cube.epb";
-            var originalBlueprint = new Blueprint(simpleCubePath);
+            var originalBlueprint = new Blueprint(SIMPLE_CUBE_PATH);
             var tempFile = Path.GetTempFileName();
 
             try
@@ -128,9 +128,9 @@ namespace EgsLib.Tests.Blueprints
                 Assert.Equal(originalBlueprint.BlockData.BlocksSize, deserializedBlueprint.BlockData.BlocksSize);
 
                 // Verify the file sizes for round-trip testing
-                var originalFileInfo = new FileInfo(simpleCubePath);
+                var originalFileInfo = new FileInfo(SIMPLE_CUBE_PATH);
                 var serializedFileInfo = new FileInfo(tempFile);
-                
+
                 Assert.True(serializedFileInfo.Length > 0);
                 Console.WriteLine($"📊 File size comparison:");
                 Console.WriteLine($"   Original: {originalFileInfo.Length} bytes");
@@ -170,7 +170,7 @@ namespace EgsLib.Tests.Blueprints
                 Assert.Equal(originalBlueprint.Header.Version, deserializedBlueprint.Header.Version);
                 Assert.Equal(originalBlueprint.Header.Size, deserializedBlueprint.Header.Size);
                 Assert.Equal(originalBlueprint.Header.SizeClass, deserializedBlueprint.Header.SizeClass);
-                
+
                 // Verify block count matches expected (if BlockData is available)
                 if (deserializedBlueprint.BlockData != null)
                 {
@@ -194,7 +194,6 @@ namespace EgsLib.Tests.Blueprints
         public void CreatePermanentEPB_ForInGameTesting()
         {
             // Arrange
-            var simpleCubePath = @"Resources\Blueprints\Simple Cube\Simple Cube.epb";
             var outputDirectory = @"..\..\..\..\TestOutput";
             var outputFile = Path.Combine(outputDirectory, "SerializedSimpleCube_ForGameTesting.epb");
 
@@ -202,7 +201,7 @@ namespace EgsLib.Tests.Blueprints
             Directory.CreateDirectory(outputDirectory);
 
             // Load the original blueprint
-            var originalBlueprint = new Blueprint(simpleCubePath);
+            var originalBlueprint = new Blueprint(SIMPLE_CUBE_PATH);
 
             // Act - Serialize the blueprint to a permanent file
             using (var fileStream = File.Create(outputFile))
@@ -223,7 +222,7 @@ namespace EgsLib.Tests.Blueprints
             // Output information for the user
             var fileInfo = new FileInfo(outputFile);
             var absolutePath = Path.GetFullPath(outputFile);
-            
+
             Console.WriteLine($"✅ Permanent EPB file created successfully!");
             Console.WriteLine($"📁 Location: {absolutePath}");
             Console.WriteLine($"📊 File size: {fileInfo.Length} bytes");
@@ -237,7 +236,6 @@ namespace EgsLib.Tests.Blueprints
         public void DetailedBinaryComparison_OriginalVsSerialized()
         {
             // Arrange
-            var simpleCubePath = @"Resources\Blueprints\Simple Cube\Simple Cube.epb";
             var outputDirectory = @"..\..\..\..\TestOutput";
             var outputFile = Path.Combine(outputDirectory, "SerializedSimpleCube_DetailedComparison.epb");
 
@@ -245,7 +243,7 @@ namespace EgsLib.Tests.Blueprints
             Directory.CreateDirectory(outputDirectory);
 
             // Load and serialize
-            var originalBlueprint = new Blueprint(simpleCubePath);
+            var originalBlueprint = new Blueprint(SIMPLE_CUBE_PATH);
             using (var fileStream = File.Create(outputFile))
             using (var writer = new BinaryWriter(fileStream))
             {
@@ -253,11 +251,11 @@ namespace EgsLib.Tests.Blueprints
             }
 
             // Read both files as byte arrays
-            var originalBytes = File.ReadAllBytes(simpleCubePath);
+            var originalBytes = File.ReadAllBytes(SIMPLE_CUBE_PATH);
             var serializedBytes = File.ReadAllBytes(outputFile);
 
             Console.WriteLine($"🔍 DETAILED BINARY COMPARISON");
-            Console.WriteLine($"📁 Original file: {simpleCubePath}");
+            Console.WriteLine($"📁 Original file: {SIMPLE_CUBE_PATH}");
             Console.WriteLine($"📁 Serialized file: {outputFile}");
             Console.WriteLine($"📊 Original size: {originalBytes.Length} bytes");
             Console.WriteLine($"📊 Serialized size: {serializedBytes.Length} bytes");
@@ -267,7 +265,7 @@ namespace EgsLib.Tests.Blueprints
             // Find first difference
             int minLength = Math.Min(originalBytes.Length, serializedBytes.Length);
             int firstDifference = -1;
-            
+
             for (int i = 0; i < minLength; i++)
             {
                 if (originalBytes[i] != serializedBytes[i])
@@ -287,7 +285,7 @@ namespace EgsLib.Tests.Blueprints
                 // Show context around the difference
                 int contextStart = Math.Max(0, firstDifference - 10);
                 int contextEnd = Math.Min(minLength, firstDifference + 10);
-                
+
                 Console.WriteLine($"📋 CONTEXT AROUND DIFFERENCE (bytes {contextStart}-{contextEnd}):");
                 Console.Write("Original:   ");
                 for (int i = contextStart; i <= contextEnd; i++)
@@ -298,7 +296,7 @@ namespace EgsLib.Tests.Blueprints
                         Console.Write($"{originalBytes[i]:X2} ");
                 }
                 Console.WriteLine();
-                
+
                 Console.Write("Serialized: ");
                 for (int i = contextStart; i <= contextEnd; i++)
                 {
@@ -361,9 +359,9 @@ namespace EgsLib.Tests.Blueprints
             // Try to load both blueprints and compare at object level
             try
             {
-                var originalBlueprint2 = new Blueprint(simpleCubePath);
+                var originalBlueprint2 = new Blueprint(SIMPLE_CUBE_PATH);
                 var serializedBlueprint = new Blueprint(outputFile);
-                
+
                 Console.WriteLine();
                 Console.WriteLine($"🔧 BLUEPRINT OBJECT COMPARISON:");
                 Console.WriteLine($"   Original Header Size: {originalBlueprint2.Header.Size}");
@@ -372,7 +370,7 @@ namespace EgsLib.Tests.Blueprints
                 Console.WriteLine($"   Serialized Version: {serializedBlueprint.Header.Version}");
                 Console.WriteLine($"   Original BlocksSize: {originalBlueprint2.BlockData.BlocksSize}");
                 Console.WriteLine($"   Serialized BlocksSize: {serializedBlueprint.BlockData.BlocksSize}");
-                
+
                 // Count non-zero blocks
                 var originalNonZero = originalBlueprint2.BlockData.Blocks.Take(originalBlueprint2.BlockData.BlocksSize).Count(b => b.Data != 0);
                 var serializedNonZero = serializedBlueprint.BlockData.Blocks.Take(serializedBlueprint.BlockData.BlocksSize).Count(b => b.Data != 0);
@@ -395,7 +393,6 @@ namespace EgsLib.Tests.Blueprints
         public void HeaderDiagnostic_PropertySerialization()
         {
             // Arrange
-            var simpleCubePath = @"Resources\Blueprints\Simple Cube\Simple Cube.epb";
             var outputDirectory = @"..\..\..\..\TestOutput";
             var outputFile = Path.Combine(outputDirectory, "HeaderDiagnostic.epb");
 
@@ -403,10 +400,10 @@ namespace EgsLib.Tests.Blueprints
             Directory.CreateDirectory(outputDirectory);
 
             // Load original blueprint
-            var originalBlueprint = new Blueprint(simpleCubePath);
+            var originalBlueprint = new Blueprint(SIMPLE_CUBE_PATH);
 
             Console.WriteLine($"🔍 HEADER DIAGNOSTIC - PROPERTIES ANALYSIS");
-            Console.WriteLine($"📁 Original blueprint: {simpleCubePath}");
+            Console.WriteLine($"📁 Original blueprint: {SIMPLE_CUBE_PATH}");
             Console.WriteLine($"🔧 Version: {originalBlueprint.Header.Version}");
             Console.WriteLine($"📦 Blueprint Type: {originalBlueprint.Header.BlueprintType}");
             Console.WriteLine($"📏 Size: {originalBlueprint.Header.Size}");
@@ -442,7 +439,7 @@ namespace EgsLib.Tests.Blueprints
             Console.WriteLine();
 
             // Read original file header bytes directly
-            var originalFileBytes = File.ReadAllBytes(simpleCubePath);
+            var originalFileBytes = File.ReadAllBytes(SIMPLE_CUBE_PATH);
             Console.WriteLine($"📋 ORIGINAL FILE BYTES (first 50):");
             for (int i = 0; i < Math.Min(originalFileBytes.Length, 50); i++)
             {
@@ -486,7 +483,6 @@ namespace EgsLib.Tests.Blueprints
         public void TrailingDataAnalysis_CaptureUnreadData()
         {
             // Arrange
-            var simpleCubePath = @"Resources\Blueprints\Simple Cube\Simple Cube.epb";
             var outputDirectory = @"..\..\..\..\TestOutput";
             var outputFile = Path.Combine(outputDirectory, "TrailingDataFixed.epb");
 
@@ -494,13 +490,13 @@ namespace EgsLib.Tests.Blueprints
             Directory.CreateDirectory(outputDirectory);
 
             Console.WriteLine($"🔍 TRAILING DATA ANALYSIS");
-            Console.WriteLine($"📁 Analyzing: {simpleCubePath}");
+            Console.WriteLine($"📁 Analyzing: {SIMPLE_CUBE_PATH}");
             Console.WriteLine();
 
             // Load original blueprint (will capture trailing data)
-            var originalBlueprint = new Blueprint(simpleCubePath);
+            var originalBlueprint = new Blueprint(SIMPLE_CUBE_PATH);
 
-            Console.WriteLine($"📊 Original file size: {new FileInfo(simpleCubePath).Length} bytes");
+            Console.WriteLine($"📊 Original file size: {new FileInfo(SIMPLE_CUBE_PATH).Length} bytes");
             Console.WriteLine($"📦 Trailing data captured: {originalBlueprint.TrailingData.Length} bytes");
             Console.WriteLine();
 
@@ -539,7 +535,7 @@ namespace EgsLib.Tests.Blueprints
                 originalBlueprint.Serialize(writer);
             }
 
-            var originalFileBytes = File.ReadAllBytes(simpleCubePath);
+            var originalFileBytes = File.ReadAllBytes(SIMPLE_CUBE_PATH);
             var serializedBytes = File.ReadAllBytes(outputFile);
 
             Console.WriteLine($"📊 COMPARISON AFTER TRAILING DATA FIX:");
@@ -588,7 +584,6 @@ namespace EgsLib.Tests.Blueprints
         public void ZipArchiveAnalysis_CompareContents()
         {
             // Arrange
-            var simpleCubePath = @"Resources\Blueprints\Simple Cube\Simple Cube.epb";
             var outputDirectory = @"..\..\..\..\TestOutput";
             var outputFile = Path.Combine(outputDirectory, "ZipAnalysis.epb");
 
@@ -596,11 +591,11 @@ namespace EgsLib.Tests.Blueprints
             Directory.CreateDirectory(outputDirectory);
 
             Console.WriteLine($"🔍 ZIP ARCHIVE ANALYSIS");
-            Console.WriteLine($"📁 Analyzing: {simpleCubePath}");
+            Console.WriteLine($"📁 Analyzing: {SIMPLE_CUBE_PATH}");
             Console.WriteLine();
 
             // Load original blueprint
-            var originalBlueprint = new Blueprint(simpleCubePath);
+            var originalBlueprint = new Blueprint(SIMPLE_CUBE_PATH);
 
             // Serialize to get our version
             using (var fileStream = File.Create(outputFile))
@@ -618,28 +613,28 @@ namespace EgsLib.Tests.Blueprints
                     // Read magic number and version to find ZIP archive position
                     var magic = reader.ReadInt32(); // Should be 2022986309
                     var version = reader.ReadInt32();
-                    
+
                     // Skip blueprint type
                     if (version > 1)
                         reader.ReadByte();
-                    
+
                     // Skip size
                     if (version > 2)
                     {
                         reader.ReadInt32(); // X
                         reader.ReadInt32(); // Y
                         reader.ReadInt32(); // Z
-                        
+
                         // Skip properties section
                         var propertiesGarbage1 = reader.ReadInt16();
                         var propertiesCount = reader.ReadInt16();
-                        
+
                         for (int i = 0; i < propertiesCount; i++)
                         {
                             var propName = reader.ReadInt32();
                             var propType = reader.ReadInt32();
                             var actualType = (byte)(propType >> 24);
-                            
+
                             // Read property value based on type
                             switch (actualType)
                             {
@@ -670,10 +665,10 @@ namespace EgsLib.Tests.Blueprints
                                     break;
                             }
                         }
-                        
+
                         var propertiesGarbage2 = reader.ReadInt16();
                     }
-                    
+
                     // Skip statistics section if present
                     if (version > 3)
                     {
@@ -681,7 +676,7 @@ namespace EgsLib.Tests.Blueprints
                         // We know the ZIP archive starts around byte 475 for Simple Cube
                         stream.Position = 475;
                     }
-                    
+
                     var zipLength = reader.ReadInt32();
                     var garbageBytes = reader.ReadBytes(2);
                     var zipBytes = reader.ReadBytes(zipLength);
@@ -704,7 +699,7 @@ namespace EgsLib.Tests.Blueprints
                             {
                                 var entry = zipFile[i];
                                 Console.WriteLine($"   Entry {i}: {entry.Name}, Size: {entry.Size}, Compressed: {entry.CompressedSize}");
-                                
+
                                 if (entry.Name == "0")
                                 {
                                     using (var entryStream = zipFile.GetInputStream(entry))
@@ -727,12 +722,12 @@ namespace EgsLib.Tests.Blueprints
             }
 
             // Analyze both files
-            AnalyzeZipArchive(simpleCubePath, "ORIGINAL ZIP ARCHIVE");
+            AnalyzeZipArchive(SIMPLE_CUBE_PATH, "ORIGINAL ZIP ARCHIVE");
             AnalyzeZipArchive(outputFile, "SERIALIZED ZIP ARCHIVE");
 
             // Create our own block data and compare
             Console.WriteLine($"🔧 BLOCK DATA COMPARISON:");
-            
+
             byte[] ourBlockData;
             using (var blockStream = new MemoryStream())
             using (var blockWriter = new BinaryWriter(blockStream))
@@ -741,7 +736,7 @@ namespace EgsLib.Tests.Blueprints
                 blockWriter.Flush();
                 ourBlockData = blockStream.ToArray();
             }
-            
+
             Console.WriteLine($"   Our block data size: {ourBlockData.Length} bytes");
             Console.WriteLine($"   Our block data first 32 bytes: {string.Join(" ", ourBlockData.Take(32).Select(b => b.ToString("X2")))}");
         }
@@ -750,18 +745,16 @@ namespace EgsLib.Tests.Blueprints
         public void BlockDataComparison_FindMissingBytes()
         {
             // Arrange
-            var simpleCubePath = @"Resources\Blueprints\Simple Cube\Simple Cube.epb";
-            
             Console.WriteLine($"🔍 BLOCK DATA DEEP ANALYSIS");
-            Console.WriteLine($"📁 Analyzing: {simpleCubePath}");
+            Console.WriteLine($"📁 Analyzing: {SIMPLE_CUBE_PATH}");
             Console.WriteLine();
 
             // Load original blueprint
-            var originalBlueprint = new Blueprint(simpleCubePath);
+            var originalBlueprint = new Blueprint(SIMPLE_CUBE_PATH);
 
             // Extract original block data from ZIP
-            byte[] originalBlockData = null;
-            using (var stream = new MemoryStream(File.ReadAllBytes(simpleCubePath)))
+            byte[] originalBlockData;
+            using (var stream = new MemoryStream(File.ReadAllBytes(SIMPLE_CUBE_PATH)))
             using (var reader = new BinaryReader(stream))
             {
                 // Navigate to ZIP archive (skip header)
@@ -801,7 +794,7 @@ namespace EgsLib.Tests.Blueprints
             // Find first difference
             int minLength = Math.Min(originalBlockData.Length, ourBlockData.Length);
             int firstDifference = -1;
-            
+
             for (int i = 0; i < minLength; i++)
             {
                 if (originalBlockData[i] != ourBlockData[i])
@@ -816,11 +809,11 @@ namespace EgsLib.Tests.Blueprints
                 Console.WriteLine($"❌ FIRST BLOCK DATA DIFFERENCE AT BYTE {firstDifference}");
                 Console.WriteLine($"   Original: 0x{originalBlockData[firstDifference]:X2}");
                 Console.WriteLine($"   Ours: 0x{ourBlockData[firstDifference]:X2}");
-                
+
                 // Show context around difference
                 int contextStart = Math.Max(0, firstDifference - 16);
                 int contextEnd = Math.Min(minLength, firstDifference + 16);
-                
+
                 Console.WriteLine($"📋 CONTEXT (bytes {contextStart}-{contextEnd}):");
                 Console.Write("Original: ");
                 for (int i = contextStart; i <= contextEnd; i++)
@@ -831,7 +824,7 @@ namespace EgsLib.Tests.Blueprints
                         Console.Write($"{originalBlockData[i]:X2} ");
                 }
                 Console.WriteLine();
-                
+
                 Console.Write("Ours:     ");
                 for (int i = contextStart; i <= contextEnd; i++)
                 {
@@ -853,7 +846,7 @@ namespace EgsLib.Tests.Blueprints
             {
                 Console.WriteLine($"❌ BLOCK DATA DIFFERS IN LENGTH");
                 Console.WriteLine($"   Common prefix: {minLength} bytes are identical");
-                
+
                 if (originalBlockData.Length > ourBlockData.Length)
                 {
                     Console.WriteLine($"   📋 MISSING DATA (bytes {minLength}-{originalBlockData.Length - 1}):");
@@ -863,7 +856,7 @@ namespace EgsLib.Tests.Blueprints
                         Console.Write($"{originalBlockData[i]:X2} ");
                     }
                     Console.WriteLine();
-                    
+
                     // Try to interpret what this missing data might be
                     if (originalBlockData.Length - ourBlockData.Length >= 4)
                     {
@@ -893,17 +886,16 @@ namespace EgsLib.Tests.Blueprints
         public void RoundTripComparison_FindLostData()
         {
             // Arrange
-            var simpleCubePath = @"Resources\Blueprints\Simple Cube\Simple Cube.epb";
             var tempFile = Path.GetTempFileName();
-            
+
             try
             {
                 Console.WriteLine($"🔍 ROUND-TRIP OBJECT COMPARISON");
-                Console.WriteLine($"📁 Analyzing: {simpleCubePath}");
+                Console.WriteLine($"📁 Analyzing: {SIMPLE_CUBE_PATH}");
                 Console.WriteLine();
 
                 // 1. Load original EPB (deserialize)
-                var originalBlueprint = new Blueprint(simpleCubePath);
+                var originalBlueprint = new Blueprint(SIMPLE_CUBE_PATH);
 
                 // 2. Serialize it to temp file
                 using (var fileStream = File.Create(tempFile))
@@ -916,26 +908,26 @@ namespace EgsLib.Tests.Blueprints
                 var reserializedBlueprint = new Blueprint(tempFile);
 
                 Console.WriteLine($"📊 BLUEPRINT COMPARISON:");
-                Console.WriteLine($"   Original file size: {new FileInfo(simpleCubePath).Length} bytes");
+                Console.WriteLine($"   Original file size: {new FileInfo(SIMPLE_CUBE_PATH).Length} bytes");
                 Console.WriteLine($"   Reserialized file size: {new FileInfo(tempFile).Length} bytes");
                 Console.WriteLine();
 
                 // Compare Header properties
                 Console.WriteLine($"📋 HEADER COMPARISON:");
                 bool headerMatch = true;
-                
+
                 if (originalBlueprint.Header.Version != reserializedBlueprint.Header.Version)
                 {
                     Console.WriteLine($"   ❌ Version: {originalBlueprint.Header.Version} → {reserializedBlueprint.Header.Version}");
                     headerMatch = false;
                 }
-                
+
                 if (originalBlueprint.Header.BlueprintType != reserializedBlueprint.Header.BlueprintType)
                 {
                     Console.WriteLine($"   ❌ BlueprintType: {originalBlueprint.Header.BlueprintType} → {reserializedBlueprint.Header.BlueprintType}");
                     headerMatch = false;
                 }
-                
+
                 if (originalBlueprint.Header.Size != reserializedBlueprint.Header.Size)
                 {
                     Console.WriteLine($"   ❌ Size: {originalBlueprint.Header.Size} → {reserializedBlueprint.Header.Size}");
@@ -954,7 +946,7 @@ namespace EgsLib.Tests.Blueprints
                     {
                         var orig = originalBlueprint.Header.Properties[i];
                         var reser = reserializedBlueprint.Header.Properties[i];
-                        
+
                         if (orig.Name != reser.Name || orig.Value?.ToString() != reser.Value?.ToString() || orig.Type != reser.Type)
                         {
                             Console.WriteLine($"   ❌ Property {i}: {orig.Name}={orig.Value}({orig.Type}) → {reser.Name}={reser.Value}({reser.Type})");
@@ -1038,7 +1030,7 @@ namespace EgsLib.Tests.Blueprints
                     {
                         var orig = originalBlocks[i];
                         var reser = reserializedBlocks[i];
-                        
+
                         if (orig.Data != reser.Data || orig.Color != reser.Color || orig.Texture != reser.Texture ||
                             orig.Damage != reser.Damage || orig.Density != reser.Density || orig.Symbol != reser.Symbol)
                         {
@@ -1047,7 +1039,7 @@ namespace EgsLib.Tests.Blueprints
                             blockDifferences++;
                         }
                     }
-                    
+
                     if (blockDifferences == 0 && originalBlocks.Length <= 10)
                     {
                         Console.WriteLine($"   ✅ All {originalBlocks.Length} blocks are identical");
@@ -1110,16 +1102,13 @@ namespace EgsLib.Tests.Blueprints
         [Fact]
         public void CheckBlueprintVersion()
         {
-            // Arrange
-            var simpleCubePath = @"..\..\..\..\Resources\Blueprints\Simple Cube\Simple Cube.epb";
-            
             // Load blueprint and print version
-            var blueprint = new Blueprint(simpleCubePath);
+            var blueprint = new Blueprint(SIMPLE_CUBE_PATH);
             Console.WriteLine($"🔧 Simple Cube Blueprint Version: {blueprint.Header.Version}");
             Console.WriteLine($"📦 Blueprint Type: {blueprint.Header.BlueprintType}");
             Console.WriteLine($"📏 Size: {blueprint.Header.Size}");
             Console.WriteLine($"📝 Properties Count: {blueprint.Header.Properties.Count}");
-            
+
             // This is just a version check test
             Assert.True(blueprint.Header.Version > 0);
         }

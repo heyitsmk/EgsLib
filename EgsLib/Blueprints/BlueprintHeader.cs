@@ -22,21 +22,21 @@ namespace EgsLib.Blueprints
         private readonly string _fileName;
 
         #region From BP File
-        public int Version { get; private set; }
+        public int Version { get; set; }
 
-        public BlueprintType BlueprintType { get; private set; }
+        public BlueprintType BlueprintType { get; set; }
 
-        public Vector3<int>? Size { get; private set; } = null;
+        public Vector3<int>? Size { get; set; } = null;
 
-        public IReadOnlyList<PropertyDetails> Properties { get; private set; }
+        public List<PropertyDetails> Properties { get; set; }
 
-        public Statistics Statistics { get; private set; }
+        public Statistics Statistics { get; set; }
 
-        public IReadOnlyDictionary<string, int> BlockMap { get; private set; }
+        public Dictionary<string, int> BlockMap { get; set; }
 
-        public IReadOnlyDictionary<string, DeviceGroup> DeviceGroups { get; private set; }
+        public Dictionary<string, DeviceGroup> DeviceGroups { get; set; }
 
-        public int DeviceGroupVersion { get; private set; }
+        public int DeviceGroupVersion { get; set; }
 
         // Preserve original "garbage" bytes for exact serialization
         private short _propertiesGarbageBefore = 0;
@@ -124,6 +124,90 @@ namespace EgsLib.Blueprints
             _fileName = fileName;
 
             Read(reader);
+        }
+
+        /// <summary>
+        /// Sets a property value, removing any existing property with the same name
+        /// </summary>
+        public void SetProperty(PropertyName name, PropertyType type, object value, string metadata = "")
+        {
+            // Remove existing property if it exists
+            Properties.RemoveAll(p => p.Name == name);
+
+            // Add new property
+            Properties.Add(new PropertyDetails(name, type, value, metadata));
+        }
+
+        /// <summary>
+        /// Sets the blueprint's display name
+        /// </summary>
+        public void SetDisplayName(string displayName)
+        {
+            SetProperty(PropertyName.DisplayName, PropertyType.String, displayName);
+        }
+
+        /// <summary>
+        /// Sets the creator player name
+        /// </summary>
+        public void SetCreatorName(string creatorName)
+        {
+            SetProperty(PropertyName.CreatorPlayerName, PropertyType.String, creatorName);
+        }
+
+        /// <summary>
+        /// Sets the creator player ID (often used for Steam ID)
+        /// </summary>
+        public void SetCreatorPlayerId(long playerId)
+        {
+            SetProperty(PropertyName.CreatorPlayerId, PropertyType.Long, playerId);
+        }
+
+        /// <summary>
+        /// Adds or updates a block in the block map
+        /// </summary>
+        public void AddToBlockMap(string blockName, int blockId)
+        {
+            if (BlockMap == null)
+                BlockMap = new Dictionary<string, int>();
+            BlockMap[blockName] = blockId;
+        }
+
+        /// <summary>
+        /// Recalculates statistics based on the provided block data
+        /// </summary>
+        public void UpdateStatistics(BlueprintBlockData blockData)
+        {
+            if (blockData == null || Statistics == null)
+                return;
+
+            // Count blocks by type
+            var blockDistributions = new Dictionary<int, int>();
+            int totalBlocks = 0;
+
+            for (int i = 0; i < blockData.BlocksSize; i++)
+            {
+                var block = blockData.Blocks[i];
+                if (!block.IsEmpty)
+                {
+                    totalBlocks++;
+                    int blockId = block.BlockId;
+                    if (blockDistributions.TryGetValue(blockId, out var value))
+                        blockDistributions[blockId] = value + 1;
+                    else
+                        blockDistributions.Add(blockId, 1);
+                }
+            }
+
+            // Create new statistics with updated values
+            // Note: This is a simplified approach - in reality you'd need block type information
+            // to properly categorize blocks as lights, doors, devices, etc.
+            Statistics = Statistics.CreateUpdated(
+                totalBlocks, // Simplified: assume all blocks are devices
+                totalBlocks,
+                totalBlocks,
+                totalBlocks * 12, // Estimated triangles
+                blockDistributions
+            );
         }
 
         public bool GetProperty<T>(PropertyName name, out T value)
@@ -334,7 +418,7 @@ namespace EgsLib.Blueprints
         {
             writer.Write(_blockMapGarbageByte);
             writer.Write(BlockMap.Count);
-            
+
             foreach (var kvp in BlockMap)
             {
                 writer.Write(kvp.Key);
@@ -348,7 +432,7 @@ namespace EgsLib.Blueprints
             {
                 writer.Write((byte)DeviceGroupVersion);
                 writer.Write((short)DeviceGroups.Count);
-                
+
                 foreach (var kvp in DeviceGroups)
                 {
                     kvp.Value.Serialize(writer, DeviceGroupVersion);
