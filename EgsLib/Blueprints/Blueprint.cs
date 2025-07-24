@@ -59,9 +59,22 @@ namespace EgsLib.Blueprints
                 BlockData = ReadBlockData(reader);
                 ReadTerrainData(reader);
             }
+
+            // Initialize lazy statistics system with block data reference
+            InitializeLazyStatistics();
         }
 
         #region Helper Methods
+        
+        /// <summary>
+        /// Initializes the lazy statistics system by setting up the block data reference
+        /// </summary>
+        private void InitializeLazyStatistics()
+        {
+            // Set up block data reference for lazy statistics calculation
+            Header.UpdateStatistics(BlockData);
+        }
+
         /// <summary>
         /// Adds a block with the specified ID at the given position
         /// </summary>
@@ -82,8 +95,8 @@ namespace EgsLib.Blueprints
             // Update block map if needed
             UpdateBlockMapForBlock(blockId);
 
-            // Update statistics
-            Header.UpdateStatistics(BlockData);
+            // Mark statistics as dirty (lazy calculation)
+            Header.MarkStatisticsDirty();
         }
 
         /// <summary>
@@ -92,7 +105,9 @@ namespace EgsLib.Blueprints
         public void RemoveBlock(Vector3<int> position)
         {
             BlockData.RemoveBlock(position);
-            Header.UpdateStatistics(BlockData);
+            
+            // Mark statistics as dirty (lazy calculation)
+            Header.MarkStatisticsDirty();
         }
 
         /// <summary>
@@ -163,6 +178,9 @@ namespace EgsLib.Blueprints
 
         public void Serialize(BinaryWriter bw)
         {
+            // Ensure statistics are up-to-date before serialization
+            Header.ForceUpdateStatistics();
+            
             Header.Serialize(bw);
             SerializeBlockData(bw);
             SerializeTrailingData(bw);

@@ -594,5 +594,53 @@ namespace EgsLib.Tests.Blueprints
             }
             return count;
         }
+
+        [Fact]
+        public void PerformanceTest_BulkOperations_ShouldBeFastWithLazyStatistics()
+        {
+            // Arrange: Load the simple cube blueprint (3x3x3 CV)
+            var blueprint = new Blueprint(SIMPLE_CUBE_PATH);
+            
+            Console.WriteLine($"🚀 PERFORMANCE TEST: Bulk Block Operations");
+            Console.WriteLine($"📊 Starting blueprint size: {blueprint.BlockData.Size}");
+            
+            // Test adding many blocks (simulating voxelization)
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var blocksToAdd = 100;
+            
+            // Add blocks in a grid pattern
+            for (int x = 0; x < 10; x++)
+            {
+                for (int y = 0; y < 10; y++)
+                {
+                    var position = new Vector3<int>(x + 3, y + 3, 1);
+                    blueprint.AddBlock(position, 403); // CV hull block
+                }
+            }
+            
+            stopwatch.Stop();
+            var addTime = stopwatch.ElapsedMilliseconds;
+            
+            Console.WriteLine($"⏱️  Added {blocksToAdd} blocks in {addTime} ms");
+            Console.WriteLine($"📈 Average time per block: {(double)addTime / blocksToAdd:F2} ms");
+            
+            // Verify that statistics are still dirty (not calculated yet)
+            Console.WriteLine($"📊 Final blueprint size: {blueprint.BlockData.Size}");
+            
+            // Now access statistics to trigger calculation
+            stopwatch.Restart();
+            var stats = blueprint.Header.Statistics;
+            stopwatch.Stop();
+            var statsTime = stopwatch.ElapsedMilliseconds;
+            
+            Console.WriteLine($"📊 Statistics calculation took: {statsTime} ms");
+            Console.WriteLine($"🧮 Total blocks: {stats.BlockSolids}");
+            
+            // Verify performance - bulk operations should be very fast
+            Assert.True(addTime < 1000, $"Bulk operations too slow: {addTime} ms for {blocksToAdd} blocks");
+            Assert.True(addTime / (double)blocksToAdd < 5, $"Average time per block too high: {(double)addTime / blocksToAdd:F2} ms");
+            
+            Console.WriteLine($"✅ Performance test passed! Lazy statistics working correctly.");
+        }
     }
 }

@@ -20,6 +20,12 @@ namespace EgsLib.Blueprints
         private const int MAGIC_NUMBER = 2022986309;
 
         private readonly string _fileName;
+        
+        // Lazy statistics calculation
+        private bool _statisticsDirty = false;
+        private bool _calculatingStatistics = false; // Recursion guard
+        private Statistics _statistics;
+        private BlueprintBlockData _blockDataReference;
 
         #region From BP File
         public int Version { get; set; }
@@ -30,7 +36,25 @@ namespace EgsLib.Blueprints
 
         public List<PropertyDetails> Properties { get; set; }
 
-        public Statistics Statistics { get; set; }
+        /// <summary>
+        /// Gets statistics with lazy calculation - only recalculates when dirty
+        /// </summary>
+        public Statistics Statistics 
+        { 
+            get
+            {
+                if (_statisticsDirty && _blockDataReference != null && !_calculatingStatistics)
+                {
+                    RecalculateStatistics();
+                }
+                return _statistics;
+            }
+            set 
+            { 
+                _statistics = value;
+                _statisticsDirty = false; // Statistics explicitly set, no need to recalculate
+            }
+        }
 
         public Dictionary<string, int> BlockMap { get; set; }
 
@@ -177,37 +201,87 @@ namespace EgsLib.Blueprints
         /// </summary>
         public void UpdateStatistics(BlueprintBlockData blockData)
         {
-            if (blockData == null || Statistics == null)
+            if (blockData == null || _statistics == null)
                 return;
 
-            // Count blocks by type
-            var blockDistributions = new Dictionary<int, int>();
-            int totalBlocks = 0;
+            // Store reference for lazy calculation
+            _blockDataReference = blockData;
+            
+            // Mark statistics as dirty instead of recalculating immediately
+            MarkStatisticsDirty();
+        }
 
-            for (int i = 0; i < blockData.BlocksSize; i++)
+        /// <summary>
+        /// Marks statistics as needing recalculation (lazy evaluation)
+        /// </summary>
+        public void MarkStatisticsDirty()
+        {
+            _statisticsDirty = true;
+        }
+
+        /// <summary>
+        /// Forces immediate statistics recalculation (use sparingly)
+        /// </summary>
+        public void ForceUpdateStatistics()
+        {
+            if (_blockDataReference != null)
             {
-                var block = blockData.Blocks[i];
-                if (!block.IsEmpty)
-                {
-                    totalBlocks++;
-                    int blockId = block.BlockId;
-                    if (blockDistributions.TryGetValue(blockId, out var value))
-                        blockDistributions[blockId] = value + 1;
-                    else
-                        blockDistributions.Add(blockId, 1);
-                }
+                RecalculateStatistics();
             }
+        }
 
-            // Create new statistics with updated values
-            // Note: This is a simplified approach - in reality you'd need block type information
-            // to properly categorize blocks as lights, doors, devices, etc.
-            Statistics = Statistics.CreateUpdated(
-                totalBlocks, // Simplified: assume all blocks are devices
-                totalBlocks,
-                totalBlocks,
-                totalBlocks * 12, // Estimated triangles
-                blockDistributions
-            );
+        /// <summary>
+        /// Internal method that performs the actual statistics calculation
+        /// </summary>
+        private void RecalculateStatistics()
+        {
+            if (_blockDataReference == null || _statistics == null || _calculatingStatistics)
+                return;
+
+            // Set recursion guard
+            _calculatingStatistics = true;
+
+            try
+            {
+                // Count blocks by type
+                var blockDistributions = new Dictionary<int, int>();
+                int totalBlocks = 0;
+
+                // Use direct size calculation to avoid any potential circular dependencies
+                int blocksCount = _blockDataReference.Size.X * _blockDataReference.Size.Y * _blockDataReference.Size.Z;
+
+                for (int i = 0; i < blocksCount; i++)
+                {
+                    var block = _blockDataReference.Blocks[i];
+                    if (!block.IsEmpty)
+                    {
+                        totalBlocks++;
+                        int blockId = block.BlockId;
+                        if (blockDistributions.TryGetValue(blockId, out var value))
+                            blockDistributions[blockId] = value + 1;
+                        else
+                            blockDistributions.Add(blockId, 1);
+                    }
+                }
+
+                // Create new statistics with updated values
+                // Note: This is a simplified approach - in reality you'd need block type information
+                // to properly categorize blocks as lights, doors, devices, etc.
+                _statistics = Statistics.CreateUpdated(
+                    totalBlocks, // Simplified: assume all blocks are devices
+                    totalBlocks,
+                    totalBlocks,
+                    totalBlocks * 12, // Estimated triangles
+                    blockDistributions
+                );
+
+                _statisticsDirty = false;
+            }
+            finally
+            {
+                // Reset recursion guard (always execute even if exception occurs)
+                _calculatingStatistics = false;
+            }
         }
 
         public bool GetProperty<T>(PropertyName name, out T value)
