@@ -21,6 +21,17 @@ namespace EgsLib.Blueprints
 
         public BlueprintBlockData BlockData { get; }
 
+        /// <summary>
+        /// Additional data that appears after the block data (possibly checksum or terrain data)
+        /// </summary>
+        public byte[] TrailingData { get; private set; } = new byte[0];
+
+        /// <summary>
+        /// Byte and boolean that appear after the ZIP length (as read by the game)
+        /// </summary>
+        private byte _zipByte;
+        private bool _zipBoolean;
+
         public Blueprint(string file)
         {
             if (string.IsNullOrWhiteSpace(file))
@@ -45,9 +56,7 @@ namespace EgsLib.Blueprints
             using (var reader = new BinaryReader(ms))
             {
                 Header = new BlueprintHeader(FileName, reader);
-
                 BlockData = ReadBlockData(reader);
-
                 ReadTerrainData(reader);
             }
         }
@@ -56,6 +65,7 @@ namespace EgsLib.Blueprints
         {
             Header.Serialize(bw);
             SerializeBlockData(bw);
+            SerializeTrailingData(bw);
         }
 
         private static byte[] ReadFileBytes(FileInfo file, out DateTime lastWriteTime)
@@ -95,7 +105,8 @@ namespace EgsLib.Blueprints
             if (Header.Version > 22)
             {
                 length = reader.ReadInt32();
-                reader.ReadBytes(2); // Unknown/garbage
+                _zipByte = reader.ReadByte();      // Read the byte
+                _zipBoolean = reader.ReadBoolean(); // Read the boolean
             }
             else
             {
@@ -176,7 +187,8 @@ namespace EgsLib.Blueprints
                     throw new InvalidOperationException($"Invalid compressed bytes length: {length}");
                 }
                 writer.Write(length);
-                writer.Write(new byte[2]);
+                writer.Write(_zipByte);    // Write the byte 
+                writer.Write(_zipBoolean); // Write the boolean
                 writer.Write(compressedBytes); // Full ZIP archive
             }
             else
@@ -188,10 +200,27 @@ namespace EgsLib.Blueprints
             }
         }
 
+        private void SerializeTrailingData(BinaryWriter writer)
+        {
+            if (TrailingData.Length > 0)
+            {
+                writer.Write(TrailingData);
+            }
+        }
+
 
         private void ReadTerrainData(BinaryReader reader)
         {
-
+            // Capture any remaining data in the stream (could be checksum, terrain data, etc.)
+            var remainingBytes = reader.BaseStream.Length - reader.BaseStream.Position;
+            if (remainingBytes > 0)
+            {
+                TrailingData = reader.ReadBytes((int)remainingBytes);
+            }
+            else
+            {
+                TrailingData = new byte[0];
+            }
         }
     }
 

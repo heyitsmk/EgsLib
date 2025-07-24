@@ -37,6 +37,11 @@ namespace EgsLib.Blueprints
         public IReadOnlyDictionary<string, DeviceGroup> DeviceGroups { get; private set; }
 
         public int DeviceGroupVersion { get; private set; }
+
+        // Preserve original "garbage" bytes for exact serialization
+        private short _propertiesGarbageBefore = 0;
+        private short _propertiesGarbageAfter = 0;
+        private byte _blockMapGarbageByte = 0;
         #endregion
 
         /// <summary>
@@ -237,11 +242,11 @@ namespace EgsLib.Blueprints
             }
         }
 
-        private static List<PropertyDetails> ReadProperties(BinaryReader reader)
+        private List<PropertyDetails> ReadProperties(BinaryReader reader)
         {
             var list = new List<PropertyDetails>();
 
-            reader.ReadInt16(); // Garbage/unknown
+            _propertiesGarbageBefore = reader.ReadInt16(); // Capture garbage/unknown
 
             var count = reader.ReadInt16();
             for (var i = 0; i < count; i++)
@@ -288,16 +293,16 @@ namespace EgsLib.Blueprints
                 list.Add(new PropertyDetails(name, type, value, metadata));
             }
 
-            reader.ReadInt16(); // Garbage/unknown
+            _propertiesGarbageAfter = reader.ReadInt16(); // Capture garbage/unknown
 
             return list;
         }
 
-        private static Dictionary<string, int> ReadBlockMap(BinaryReader reader)
+        private Dictionary<string, int> ReadBlockMap(BinaryReader reader)
         {
             var dict = new Dictionary<string, int>();
 
-            reader.ReadByte(); // Garbage/unknown
+            _blockMapGarbageByte = reader.ReadByte(); // Capture garbage/unknown
 
             var count = reader.ReadInt32();
             for (var i = 0; i < count; i++)
@@ -327,34 +332,39 @@ namespace EgsLib.Blueprints
         }
         private void SerializeBlockMap(BinaryWriter writer)
         {
-            writer.Write((byte)0);
+            writer.Write(_blockMapGarbageByte);
             writer.Write(BlockMap.Count);
+            
             foreach (var kvp in BlockMap)
             {
                 writer.Write(kvp.Key);
-                writer.Write((Int16)kvp.Value);
+                writer.Write((short)kvp.Value);
             }
         }
 
         private void SerializeDeviceGroups(BinaryWriter writer)
         {
-            writer.Write((byte)DeviceGroupVersion);
-            writer.Write((Int16)DeviceGroups.Count);
-            foreach (var kvp in DeviceGroups)
+            if (Version > 10)
             {
-                kvp.Value.Serialize(writer, DeviceGroupVersion);
+                writer.Write((byte)DeviceGroupVersion);
+                writer.Write((short)DeviceGroups.Count);
+                
+                foreach (var kvp in DeviceGroups)
+                {
+                    kvp.Value.Serialize(writer, DeviceGroupVersion);
+                }
             }
         }
 
         private void SerializeProperties(BinaryWriter writer)
         {
-            writer.Write((Int16)0);
+            writer.Write(_propertiesGarbageBefore);
             writer.Write((Int16)Properties.Count);
             foreach (var p in Properties)
             {
                 p.Serialize(writer);
             }
-            writer.Write((Int16)0);
+            writer.Write(_propertiesGarbageAfter);
         }
     }
 }

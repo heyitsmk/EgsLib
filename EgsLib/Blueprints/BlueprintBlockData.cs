@@ -22,6 +22,12 @@ namespace EgsLib.Blueprints
         private readonly List<NbtList> _circuits = new List<NbtList>();
         private readonly List<string> _shortcutNames = new List<string>();
 
+        /// <summary>
+        /// Raw bytes for all remaining data after shortcut names (blueprint parts, snap points, color palette, etc.)
+        /// This is captured during read and written back during serialize as a stopgap until we implement proper parsing
+        /// </summary>
+        private byte[] _remainingDataBytes = new byte[0];
+
         public Vector3<int> Size { get; }
 
         /// <summary>
@@ -62,12 +68,34 @@ namespace EgsLib.Blueprints
             ReadSignals(reader);
             ReadLogicCircuits(reader);
             ReadShortcutNames(reader);
+
+            // Capture remaining data that EgsLib doesn't parse yet:
+            // - Blueprint parts section
+            // - Snap point match table section  
+            // - Block color palette section
+            
+            // Read all remaining bytes (can't use stream.Length inside ZIP archive)
+            var remainingBytes = new List<byte>();
+            try
+            {
+                while (true)
+                {
+                    remainingBytes.Add(reader.ReadByte());
+                }
+            }
+            catch (EndOfStreamException)
+            {
+                // Expected when we reach end of stream
+            }
+            
+            _remainingDataBytes = remainingBytes.ToArray();
         }
 
         public void Serialize(BinaryWriter writer)
         {
             if (_version <= 2)
                 writer.WriteIntVector3(Size);
+            
             SerializeBlockData(writer);
             SerializeBlockDamage(writer);
             SerializeDensity(writer);
@@ -78,6 +106,12 @@ namespace EgsLib.Blueprints
             SerializeSignals(writer);
             SerializeLogicCircuits(writer);
             SerializeShortcutNames(writer);
+            
+            // Write back the captured remaining data (blueprint parts, snap points, color palette, etc.)
+            if (_remainingDataBytes.Length > 0)
+            {
+                writer.Write(_remainingDataBytes);
+            }
         }
 
         public void Dispose()
